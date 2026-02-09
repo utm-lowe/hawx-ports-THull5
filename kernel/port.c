@@ -157,8 +157,25 @@ port_init(void)
     // non-kernal ports. Make sure that all ports are empty.
 
     // YOUR CODE HERE
-}
+    for (int i = 0; i < NPORT; i++) {
+        ports[i].head  = 0;
+        ports[i].tail  = 0;
+        ports[i].count = 0;
+        //Intialize kernel ports
 
+        if (i == PORT_CONSOLEIN || i == PORT_CONSOLEOUT || i == PORT_DISKCMD) //Check for kernel port 
+        {
+            ports[i].free  = 0;
+            ports[i].type  = PORT_TYPE_KERNEL;
+            ports[i].owner = 0;  
+        } else {
+            ports[i].free  = 1;
+            ports[i].type  = PORT_TYPE_FREE;
+            ports[i].owner = 0;  
+        } //Intialize user/free ports
+    }
+
+}
 
 // Close the port.
 void 
@@ -168,6 +185,23 @@ port_close(int port)
     // if it is open, we empty its contents and mark it as free.
 
     // YOUR CODE HERE
+ if (port < 0 || port >= NPORT)
+        return;
+        //Invalid?
+
+    if (ports[port].type == PORT_TYPE_KERNEL)
+        return;
+        //Do not close kernel port
+    if (ports[port].free)
+        return;
+        //Free?
+
+    ports[port].free  = 1;
+    ports[port].owner = 0; 
+    ports[port].head  = 0;
+    ports[port].tail  = 0;
+    ports[port].count = 0;
+        //Buffer
 }
 
 
@@ -185,8 +219,37 @@ port_acquire(int port, procid_t proc_id)
     // If this operation fails, return -1.
 
     // YOUR CODE HERE
-    
-    return -1;
+
+     if (port < 0) {
+        for (int i = 0; i < NPORT; i++) {
+            if (ports[i].free && ports[i].type != PORT_TYPE_KERNEL) {
+                ports[i].free  = 0;
+                ports[i].owner = proc_id;
+                ports[i].head  = 0;
+                ports[i].tail  = 0;
+                ports[i].count = 0;
+                return i;
+            }
+        }
+        return -1;  
+    }
+        //Allocate next free port 
+
+    if (port < 0 || port >= NPORT)
+        return -1;
+
+    if (!ports[port].free || ports[port].type == PORT_TYPE_KERNEL)
+        return -1;
+        //Acquire port 
+
+    ports[port].free  = 0;
+    ports[port].owner = proc_id;
+    ports[port].head  = 0;
+    ports[port].tail  = 0;
+    ports[port].count = 0;
+
+    return port;
+    //Allocate the port 
 }
 
 
@@ -201,7 +264,23 @@ port_write(int port, char *buf, int n)
     // write it.
 
     // YOUR CODE HERE
-    return -1;
+    if (port < 0 || port >= NPORT)
+        return -1;
+
+    if (ports[port].free)
+        return -1;
+        // Port validity
+
+    int written = 0;
+
+    while (written < n && ports[port].count < PORT_BUF_SIZE) {
+        ports[port].buffer[ports[port].head] = buf[written];
+        ports[port].head = (ports[port].head + 1) % PORT_BUF_SIZE;
+        ports[port].count++;
+        written++;
+    }
+        //Circular buff
+    return written;
 }
 
 
@@ -217,5 +296,21 @@ port_read(int port, char *buf, int n)
 
     // YOUR CODE HERE
 
-    return -1;
+    if (port < 0 || port >= NPORT)
+        return -1;
+
+    if (ports[port].free)
+        return -1;
+        //Validate the port
+
+    int read = 0;
+
+    while (read < n && ports[port].count > 0) {
+        buf[read] = ports[port].buffer[ports[port].tail];
+        ports[port].tail = (ports[port].tail + 1) % PORT_BUF_SIZE;
+        ports[port].count--;
+        read++;
+    }
+    //Circular Buff
+    return read;
 }
